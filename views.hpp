@@ -4,13 +4,26 @@
 
 namespace view {
 
+template<typename Func>
+class TerminationOp {
+public:
+	TerminationOp(Func _f) : f(_f) {}
+
+	template<typename T>
+	auto apply(std::vector<T> &v) {
+		return f(v);
+	}
+private:
+	Func &f;
+};
+
 template<typename T>
 class RangeView {
 public:
 	typedef std::function< std::vector<T>(std::vector<T>&) > Action;
 	typedef std::vector<Action> Actions;
 
-	RangeView(std::function< std::vector<T>(std::vector<T>&) > func) {
+	RangeView(Action func) {
 		actions.push_back(func);
 	}
 
@@ -18,11 +31,15 @@ public:
 
 	// }
 
-	template<class Y>
-	friend RangeView<Y> operator|(std::vector<Y> &v, RangeView<Y> rv);
+	template<class Y, class Z>
+	friend RangeView<Y> operator|(std::vector<Y> &v, Z func);
 
-	template<typename Y, typename F>
-	friend std::vector<F> operator|(RangeView<Y> rv, std::function< std::vector<F>(std::vector<Y>&) > termPred);
+	template<class Y, class Z>
+	friend RangeView<Y> operator|(RangeView<Y> rv, Z func);
+
+	template<typename Y, typename Z>
+	friend auto operator|(RangeView<Y> rv, TerminationOp<Z> func);
+
 private:
 	void setCollection(std::vector<T> *_v) {
 		v = _v;
@@ -36,32 +53,43 @@ private:
 		return actions;
 	}
 
+	void addAction(Action action) {
+		actions.push_back(action);
+	}
+
 	int currentAction = 0;
 	std::vector<T> *v;
 	Actions actions;	
 };
 
-template<typename T>
-RangeView<T> operator|(std::vector<T> &vec, RangeView<T> rv) {
+template<typename T, typename F>
+RangeView<T> operator|(std::vector<T> &vec, F func) {
 	std::cout << "Create RangeView stream" << std::endl;
+	RangeView<T> rv = RangeView<T>(std::function< std::vector<T>(std::vector<T>&) > (func));
 	rv.setCollection(&vec);
 
 	return rv;
 }
 
 template<typename T, typename F>
-std::vector<F> operator|(RangeView<T> rv, std::function< std::vector<F>(std::vector<T>&) > termPred) {
+RangeView<T> operator|(RangeView<T> rv, F func) {
+	rv.addAction(std::function< std::vector<T>(std::vector<T>&) >(func));
+	return rv;
+}
+
+template<typename T, typename F>
+auto operator|(RangeView<T> rv, TerminationOp<F> func) {
 	std::vector<T> &result = rv.getCollection(); 
 	for (auto &act : rv.getActions()) {
 		result = act(result);
 	}
 
-	return termPred(result);
+	return func.apply(result);
 }
 
-template<typename T, typename F>
-RangeView<T> remove_if(std::function< F(T) > &pred) {
-	std::function< std::vector<T>(std::vector<T>&) > remove_if_func = [pred](std::vector<T> &v) {
+template<typename F>
+auto remove_if(F &&pred) {
+	auto remove_if_func = [pred](auto &v) {
 		for (size_t i = 0; i < v.size();) {
 			if (pred(v[i])) {
 				v.erase(v.begin() + i);
@@ -73,13 +101,15 @@ RangeView<T> remove_if(std::function< F(T) > &pred) {
 		return v;
 	};
 
-	return RangeView<T>(remove_if_func);
+	return remove_if_func;
 }
 
-template<typename T, typename F>
-std::function< std::vector<F>(std::vector<T>&) > transform(std::function< F(T) > &pred) {
-	std::function< std::vector<F>(std::vector<T>&) > transform_func = [pred](std::vector<T> &v) {
-		std::vector<F> result;
+template<typename F>
+auto transform(F &&pred) {
+	auto transform_func = [pred](auto &v) {
+		using type = std::decay_t<decltype(pred(v[0]))>;
+
+		std::vector<type> result;
 		for (size_t i = 0; i < v.size(); i++) {
 			result.push_back(pred(v[i]));
 		}
@@ -87,7 +117,7 @@ std::function< std::vector<F>(std::vector<T>&) > transform(std::function< F(T) >
 		return result;
 	};
 
-	return transform_func;
+	return TerminationOp<decltype(transform_func)>(transform_func);
 }
 
 }
