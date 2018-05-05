@@ -1,7 +1,16 @@
 #import <vector>
 #import <functional>
 #import <algorithm>
+#import <numeric>
 #import <iostream>
+
+template <class TView>
+auto accumulate(TView view) {
+	auto collection = view.getResult();
+	using type = std::decay_t<decltype(collection[0])>;
+
+	return std::accumulate(collection.begin(), collection.end(), type());
+}
 
 namespace view {
 
@@ -39,6 +48,8 @@ public:
 		return count;
 	}
 
+	std::vector<T> getResult();
+
 	template<class Y, class Z>
 	friend RangeView<Y> operator|(std::vector<Y> &v, Z func);
 
@@ -70,6 +81,16 @@ private:
 	std::vector<T> *v;
 	Actions actions;	
 };
+
+template<typename T>
+std::vector<T> RangeView<T>::getResult() {
+	std::vector<T> result = this->getCollection(); 
+	for (auto &act : this->getActions()) {
+		act(result, *this);
+	}
+
+	return result;
+}
 
 template<typename T, typename F>
 RangeView<T> operator|(std::vector<T> &vec, F func) {
@@ -126,11 +147,6 @@ auto reverse() {
 	return reverse_func;
 }
 
-// template <class TView>
-// auto accumulate(TView view) {
-
-// }
-
 template<typename F>
 auto remove_if(F &&pred) {
 	auto remove_if_func = [pred](auto &v, auto &rv) {
@@ -154,7 +170,8 @@ auto transform(F &&pred) {
 		using type = std::decay_t<decltype(pred(v[0]))>;
 
 		std::vector<type> result;
-		for (size_t i = 0; i < v.size(); i++) {
+		// TODO: && i < rv.getCount()
+		for (size_t i = 0; i < v.size() ; i++) {
 			result.push_back(pred(v[i]));
 		}
 
