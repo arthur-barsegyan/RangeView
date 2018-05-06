@@ -6,7 +6,7 @@
 
 template <class TView>
 auto accumulate(TView view) {
-	auto collection = view.getResult();
+	auto collection = view.toVector();
 	using type = std::decay_t<decltype(collection[0])>;
 
 	return std::accumulate(collection.begin(), collection.end(), type());
@@ -23,20 +23,20 @@ namespace view {
 		TerminationOp(Func _f) : f(_f) {}
 
 		template<typename T>
-		auto apply(const  std::vector<T> &v, RangeView<T> &rv) {
+		auto apply(const std::vector<T> &v, RangeView<T> &rv) {
 			return f(v, rv);
 		}
 	private:
 		Func &f;
 	};
 
+	class EndlessSequenceException {};
+	
 	template<typename T>
 	class RangeView {
 	public:
 		typedef std::function< std::vector<T>(std::vector<T>&, RangeView<T>&) > Action;
 		typedef std::vector<Action> Actions;
-
-		class EndlessSequenceException {};
 
 		RangeView(Action generator) : extCollection(std::vector<T>()), seqGenerator(generator), hasGenerator(true), endless(true) {}
 		RangeView(const std::vector<T> &v) : extCollection(v) {}
@@ -70,7 +70,7 @@ namespace view {
 		friend RangeView<Y> operator|(RangeView<Y> rv, Z func);
 
 		template<typename Y, typename Z>
-		friend RangeView<Y> operator|(RangeView<Y> rv, TerminationOp<Z> func);
+		friend auto operator|(RangeView<Y> rv, TerminationOp<Z> termOp);
 
 	private:
 		const std::vector<T> &getCollection() {
@@ -126,9 +126,13 @@ namespace view {
 	}
 
     template<typename T, typename F>
-    RangeView<T> operator|(RangeView<T> rv, TerminationOp<F> func) {
-        func.apply(rv.getCollection(), rv);
-        return rv;
+    auto operator|(RangeView<T> rv, TerminationOp<F> termOp) {
+    	auto temp = rv.toVector();
+
+    	using type = std::decay_t<decltype(termOp.apply(temp, rv))>;
+        auto newData = termOp.apply(temp, rv);
+
+        return RangeView<std::decay_t<decltype(newData[0])>>(newData);
     }
 
 	RangeView<int> ints(int n) {
@@ -152,7 +156,7 @@ namespace view {
 			return v;
 		};
 
-		return TerminationOp<decltype(take_func)>(take_func);
+		return take_func;
 	}
 
 	auto reverse() {
@@ -195,7 +199,7 @@ namespace view {
 			return result;
 		};
 
-		return transform_func;
+		return TerminationOp<decltype(transform_func)>(transform_func);
 	}
 
 }
