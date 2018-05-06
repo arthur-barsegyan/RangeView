@@ -40,6 +40,29 @@ TEST_F(RangeViewTest, accumulate_with_pred) {
     ASSERT_EQ(accumulate(rv), 25);
 }
 
+TEST_F(RangeViewTest, transform_to_new_rv) {
+	auto rv = view::ints(5)
+				| view::transform([](int i) { return std::to_string(i); })
+				| view::take(10)
+				| view::remove_if([](std::string i) { return i.size() > 1; });
+
+	ASSERT_EQ(accumulate(rv), "56789");
+}
+
+TEST_F(RangeViewTest, check_take_method_without_ints) {
+	auto rv = (*v) | view::remove_if([](int i) { return i % 2 == 0; })
+					| view::take(2);
+
+	ASSERT_EQ(rv.to_vector(), {1, 3});
+}
+
+TEST_F(RangeViewTest, extcollection_is_immutable) {
+	auto rv = (*v) | view::remove_if([](int i) { return i % 2 == 0; })
+					| view::take(1);
+
+	ASSERT_EQ(*v, {1, 2, 3, 4, 5, 6, 7});
+}
+
 int main(int argc, char *argv[]) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
