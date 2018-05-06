@@ -20,14 +20,20 @@ namespace view {
 	template<typename Func>
 	class TerminationOp {
 	public:
-		TerminationOp(Func _f) : f(_f) {}
+		TerminationOp(Func &_f) : f(_f) {}
 
 		template<typename T>
 		auto apply(const std::vector<T> &v, RangeView<T> &rv) {
 			return f(v, rv);
 		}
 	private:
-		Func &f;
+		Func f;
+	};
+
+	template<typename Func>
+	class LazyTerminationOp : public TerminationOp<Func> {
+	public:
+		LazyTerminationOp(Func &_f) : TerminationOp<Func>(_f) {}
 	};
 
 	class EndlessSequenceException {};
@@ -42,12 +48,12 @@ namespace view {
 		RangeView(const std::vector<T> &v) : extCollection(v) {}
 
 		// TODO: Maybe make it private?
-		void setCount(long _count) {
+		void setCount(int _count) {
 			count = _count;
 			endless = false;
 		}
 
-		long getCount() {
+		int getCount() {
 			return count;
 		}
 
@@ -72,6 +78,8 @@ namespace view {
 		template<typename Y, typename Z>
 		friend auto operator|(RangeView<Y> rv, TerminationOp<Z> termOp);
 
+        template<typename Y, typename Z>
+        friend auto operator|(RangeView<Y> rv, LazyTerminationOp<Z> termOp);
 	private:
 		const std::vector<T> &getCollection() {
 			return extCollection;
@@ -83,7 +91,7 @@ namespace view {
 			return actions;
 		}
 
-		long count = 0;
+		int count = 0;
 		bool endless = false;
         bool hasGenerator = false;
         Action seqGenerator;
@@ -135,6 +143,12 @@ namespace view {
         return RangeView<std::decay_t<decltype(newData[0])>>(newData);
     }
 
+    template<typename T, typename F>
+    auto operator|(RangeView<T> rv, LazyTerminationOp<F> termOp) {
+		termOp.apply(std::vector<T>(), rv);
+		return rv;
+    }
+
 	RangeView<int> ints(int n) {
 		auto int_generator_func = [n](auto &v, auto &rv) {
 			for (size_t i = n, count = 0; count < rv.getCount() || rv.isEndless(); i++, count++) {
@@ -152,11 +166,12 @@ namespace view {
 
 	auto take(int n) {
 		auto take_func = [n](auto &v, auto &rv) {
+            std::cout << n << std::endl;
 			rv.setCount(n);
 			return v;
 		};
 
-		return take_func;
+        return LazyTerminationOp<decltype(take_func)>(take_func);
 	}
 
 	auto reverse() {
