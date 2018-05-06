@@ -36,6 +36,8 @@ namespace view {
 		typedef std::function< std::vector<T>(std::vector<T>&, RangeView<T>&) > Action;
 		typedef std::vector<Action> Actions;
 
+		class EndlessSequenceException {};
+
 		RangeView(Action generator) : extCollection(std::vector<T>()), seqGenerator(generator), hasGenerator(true), endless(true) {}
 		RangeView(const std::vector<T> &v) : extCollection(v) {}
 
@@ -53,12 +55,13 @@ namespace view {
             return endless;
 		}
 
-		std::vector<T> getResult();
+		std::vector<T> toVector();
 
 		// TODO: Maybe make it private?
         void addAction(Action action) {
             actions.push_back(action);
         }
+
 
 		template<class Y, class Z>
 		friend RangeView<Y> operator|(std::vector<Y> &v, Z func);
@@ -88,9 +91,13 @@ namespace view {
 	};
 
 	template<typename T>
-	std::vector<T> RangeView<T>::getResult() {
+	std::vector<T> RangeView<T>::toVector() {
         std::vector<T> result;
         if (hasGenerator) {
+        	if (endless) {
+        		throw EndlessSequenceException();
+        	}
+
             seqGenerator(result, *this);
         } else {
         	result.clear();
