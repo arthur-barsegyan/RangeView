@@ -27,6 +27,19 @@ TEST_F(RangeViewTest, accumulate_with_transform) {
     ASSERT_EQ(sum, 285);
 }
 
+
+TEST_F(RangeViewTest, check_infinite_sequence) {
+	auto rv = view::ints(1);
+
+	try {
+		rv.toVector();
+	} catch (view::EndlessSequenceException &e) {
+		SUCCEED();
+	}
+
+	FAIL();
+}
+
 TEST_F(RangeViewTest, ints_check) {
     auto rv = view::ints(1)
                 | view::take(10);
@@ -53,14 +66,14 @@ TEST_F(RangeViewTest, check_take_method_without_ints) {
 	auto rv = (*v) | view::remove_if([](int i) { return i % 2 == 0; })
 					| view::take(2);
 
-	ASSERT_EQ(rv.to_vector(), {1, 3});
+	ASSERT_EQ(rv.toVector(), std::vector<int>({1, 3}));
 }
 
 TEST_F(RangeViewTest, extcollection_is_immutable) {
 	auto rv = (*v) | view::remove_if([](int i) { return i % 2 == 0; })
 					| view::take(1);
 
-	ASSERT_EQ(*v, {1, 2, 3, 4, 5, 6, 7});
+	ASSERT_EQ(*v, std::vector<int>({1, 2, 3, 4, 5, 6, 7}));
 }
 
 int main(int argc, char *argv[]) {
