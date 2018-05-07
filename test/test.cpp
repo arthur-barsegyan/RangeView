@@ -24,7 +24,7 @@ TEST_F(RangeViewTest, accumulate_with_transform) {
     int sum = accumulate(view::ints(1)
                          | view::transform([](int i){return i*i;})
                          | view::take(10));
-    ASSERT_EQ(sum, 285);
+    ASSERT_EQ(sum, 385);
 }
 
 
@@ -33,11 +33,10 @@ TEST_F(RangeViewTest, check_infinite_sequence) {
 
 	try {
 		rv.toVector();
+        FAIL();
 	} catch (view::EndlessSequenceException &e) {
 		SUCCEED();
 	}
-
-	FAIL();
 }
 
 TEST_F(RangeViewTest, ints_check) {
@@ -63,7 +62,7 @@ TEST_F(RangeViewTest, transform_to_new_rv) {
 }
 
 TEST_F(RangeViewTest, check_take_method_without_ints) {
-	auto rv = (*v) | view::remove_if([](int i) { return i % 2 == 0; })
+	auto rv = (*v)  | view::remove_if([](int i) { return i % 2 == 0; })
 					| view::take(2);
 
 	ASSERT_EQ(rv.toVector(), std::vector<int>({1, 3}));
@@ -74,6 +73,39 @@ TEST_F(RangeViewTest, extcollection_is_immutable) {
 					| view::take(1);
 
 	ASSERT_EQ(*v, std::vector<int>({1, 2, 3, 4, 5, 6, 7}));
+}
+
+TEST_F(RangeViewTest, more_than_one_take) {
+	auto rv = (*v) | view::remove_if([](int i) { return i % 2 == 0; })
+					| view::take(1)
+					| view::remove_if([](int i) { return i > 5; })
+					| view::take(2);
+
+	ASSERT_EQ(rv.toVector(), std::vector<int>({1}));
+}
+
+TEST_F(RangeViewTest, a) {
+    auto rv = (*v)  | view::reverse()
+                    | view::transform([](int i) { return std::to_string(i); })
+                    | view::remove_if([] (std::string i) { return i.size() > 2; })
+                    | view::take(10);
+
+    ASSERT_EQ(accumulate(rv), "7654321");
+}
+
+TEST_F(RangeViewTest, from_bridge_to_rv_after_pred) {
+    auto rv =       view::ints(1)
+                    | view::transform([](int i) { return std::to_string(i); })
+                    | view::remove_if([] (std::string i) { return i.size() > 2; })
+                    | view::take(4);
+
+    ASSERT_EQ(accumulate(rv), "1234");
+}
+
+TEST_F(RangeViewTest, take_with_collection) {
+	auto rv = (*v) | view::take(2);
+
+	ASSERT_EQ(rv.toVector(), std::vector<int>({1, 2}));
 }
 
 int main(int argc, char *argv[]) {
