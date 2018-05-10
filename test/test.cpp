@@ -13,7 +13,7 @@ protected:
         delete v;
     }
 
-    std::vector<int> *v;
+    std::vector<int > *v;
 };
 
 TEST_F(RangeViewTest, create_rv_from_collection) {
@@ -106,6 +106,15 @@ TEST_F(RangeViewTest, take_with_collection) {
 	auto rv = (*v) | view::take(2);
 
 	ASSERT_EQ(rv.toVector(), std::vector<int>({1, 2}));
+}
+
+TEST_F(RangeViewTest, noizy_test) {
+    auto v1 = new std::vector<view::Noisy>(10);
+    auto rv = (*v1)
+			  | view::reverse()
+              | view::transform([](const view::Noisy &i) { return 1; })
+              | view::remove_if([] (int i) { return true; })
+              | view::take(10);
 }
 
 int main(int argc, char *argv[]) {

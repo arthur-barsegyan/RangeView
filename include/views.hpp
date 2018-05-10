@@ -4,8 +4,8 @@
 #import <numeric>
 #import <iostream>
 
-template <class TView>
-auto accumulate(TView view) {
+template <class RView>
+auto accumulate(RView view) {
 	auto collection = view.toVector();
 	using type = std::decay_t<decltype(collection[0])>;
 
@@ -13,6 +13,29 @@ auto accumulate(TView view) {
 }
 
 namespace view {
+
+    class Noisy {
+    public:
+        Noisy() {
+            std::cout << "Constructor" << std::endl;
+        }
+
+        Noisy(const Noisy &another) {
+            std::cout << "Copy constructor" << std::endl;
+        }
+
+        Noisy(const Noisy &&another) {
+            std::cout << "Move Constructor" << std::endl;
+        }
+
+        Noisy &operator=(const Noisy &another) {
+            std::cout << "Operator=" << std::endl;
+        }
+
+        ~Noisy() {
+            std::cout << "Destructor" << std::endl;
+        }
+    };
 
 	template<typename T>
 	class RangeView;
@@ -62,16 +85,19 @@ namespace view {
 	template<typename T>
 	class RangeView {
 	public:
-		typedef std::function< std::vector<T>(std::vector<T>&, RangeView<T>&) > Action;
+		typedef std::function< void(std::vector<T>&, RangeView<T>&) > Action;
 		typedef std::vector<Action> Actions;
 
-		RangeView() : extCollection(std::vector<T>()) {}
-		RangeView(Action generator) : extCollection(std::vector<T>()), seqGenerator(generator), hasGenerator(true), endless(true) {}
-		RangeView(std::vector<T> &v) : extCollection(v) {}
+		RangeView() : result(std::vector<T>()) {}
+		RangeView(Action generator) : result(std::vector<T>()), seqGenerator(generator), hasGenerator(true), endless(true) {}
+
+		RangeView(std::vector<T> &v) : result(v) {}
+		RangeView(std::vector<T> &&v) : result(v) {}
 
 		// TODO: Maybe make it private?
 		void setCount(int _count) {
 			count = _count;
+            isChanged = true;
 			endless = false;
 		}
 
@@ -87,16 +113,18 @@ namespace view {
             return result;
         }
 
-		std::vector<T> toVector();
+		const std::vector<T> & toVector();
 
 		// TODO: Maybe make it private?
         void addAction(Action action) {
+            isChanged = true;
             actions.push_back(action);
         }
 
         void setExtCollection(const std::vector<T> &collection) {
-        	extCollection.clear();
-        	extCollection.insert(extCollection.begin(), collection.begin(), collection.end());
+            isChanged = true;
+        	result.clear();
+        	result.insert(result.begin(), collection.begin(), collection.end());
         }
 
 		template<class Y, class Z>
@@ -112,10 +140,9 @@ namespace view {
         friend auto operator|(RangeView<Y> rv, LazyTerminationOp<Z> termOp);
 	private:
 		const std::vector<T> &getCollection() {
-			return extCollection;
+			return result;
 		}
 
-		std::vector<T> extCollection;
         std::vector<T> result;
 
 		Actions &getActions() {
@@ -123,6 +150,7 @@ namespace view {
 		}
 
 		int count = -1;
+        bool isChanged = true;
 		bool endless = false;
         bool hasGenerator = false;
         Action seqGenerator;
@@ -131,33 +159,30 @@ namespace view {
 
 	template<typename T, typename R>
 	struct RangeViewBridge {
-		RangeViewBridge(RangeView<T> _old, RangeView<R> _new, std::function< std::vector<R>(std::vector<T>&, RangeView<T>&) >_func) : oldRV(_old), newRV(_new), func(_func) {}
+		RangeViewBridge(RangeView<T> &_old, RangeView<R> &&_new, std::function< std::vector<R>(const std::vector<T>&, RangeView<T>&) >_func) : oldRV(_old), newRV(_new), func(_func) {}
 		
-		std::function< std::vector<R>(std::vector<T>&, RangeView<T>&) > func;
-		RangeView<T> oldRV;
+		std::function< std::vector<R>(const std::vector<T>&, RangeView<T>&) > func;
+		RangeView<T> &oldRV;
 		RangeView<R> newRV;
 	};
 
 	template<typename T>
-	std::vector<T> RangeView<T>::toVector() {
-        if (hasGenerator) {
-        	if (endless) {
-        		throw EndlessSequenceException();
-        	}
+	const std::vector<T> &RangeView<T>::toVector() {
+        if (isChanged) {
+            if (hasGenerator) {
+                if (endless) {
+                    throw EndlessSequenceException();
+                }
 
-            seqGenerator(result, *this);
-        } else {
-        	result.clear();
-        	result.assign(this->getCollection().begin(), this->getCollection().end());
+                seqGenerator(result, *this);
+            }
+
+            for (auto &act : this->getActions()) {
+                act(result, *this);
+            }
+
+            isChanged = false;
         }
-
-		for (auto &act : this->getActions()) {
-			act(result, *this);
-		}
-
-    //        if (count != -1) {
-    //            result.resize(count);
-    //        }
 
 		return result;
 	}
@@ -165,7 +190,7 @@ namespace view {
 	template<typename T, typename F>
 	RangeView<T> operator|(std::vector<T> &vec, Op<F> func) {
 		RangeView<T> rv = RangeView<T>(vec);
-		rv.addAction(std::function< std::vector<T>(std::vector<T>&, RangeView<T>&) >(func.getFunc()));
+		rv.addAction(std::function< void(std::vector<T>&, RangeView<T>&) >(func.getFunc()));
 
 		return rv;
 	}
@@ -173,14 +198,14 @@ namespace view {
 	template<typename T, typename F>
 	RangeView<T> operator|(std::vector<T> &vec, LazyTerminationOp<F> func) {
 		RangeView<T> rv = RangeView<T>(vec);
-        rv.addAction(std::function< std::vector<T>(std::vector<T>&, RangeView<T>&) >(func.getFunc()));
+        rv.addAction(std::function< void(std::vector<T>&, RangeView<T>&) >(func.getFunc()));
 
 		return rv;
 	}
 
 	template<typename T, typename F>
 	RangeView<T> operator|(RangeView<T> rv, Op<F> func) {
-		rv.addAction(std::function< std::vector<T>(std::vector<T>&, RangeView<T>&) >(func.getFunc()));
+		rv.addAction(std::function< void(std::vector<T>&, RangeView<T>&) >(func.getFunc()));
 		return rv;
 	}
 
@@ -189,7 +214,7 @@ namespace view {
         auto newData = termOp.apply(std::vector<T>(), rv);
         using type = std::decay_t<decltype(newData[0])>;
 
-        RangeViewBridge<T, type> bridge = RangeViewBridge<T, type>(rv, RangeView<type>(), std::function< std::vector<type>(std::vector<T>&, RangeView<T>&) >(termOp.getFunc()));
+        RangeViewBridge<T, type> bridge = RangeViewBridge<T, type>(rv, RangeView<type>(), std::function< std::vector<type>(const std::vector<T>&, RangeView<T>&) >(termOp.getFunc()));
         return bridge;
     }
 
@@ -198,7 +223,7 @@ namespace view {
     	if (rv.isEndless()) {
 			termOp.apply(std::vector<T>(), rv);
 		} else {
-			rv.addAction(std::function< std::vector<T>(std::vector<T>&, RangeView<T>&) >(termOp.getFunc()));
+			rv.addAction(std::function< void (std::vector<T>&, RangeView<T>&) >(termOp.getFunc()));
 		}
 
 		return rv;
@@ -210,18 +235,17 @@ namespace view {
     		termOp.apply(std::vector<T>(), bridge.oldRV);
     	} 
 
-    	bridge.newRV.addAction(std::function< std::vector<R>(std::vector<R>&, RangeView<R>&) >(termOp.getFunc()));
-    	auto temp = bridge.oldRV.toVector();
+    	bridge.newRV.addAction(std::function< void(std::vector<R>&, RangeView<R>&) >(termOp.getFunc()));
+    	const std::vector<T> &temp = bridge.oldRV.toVector();
     	auto data = bridge.func(temp, bridge.oldRV);
 
         bridge.newRV.setExtCollection(data);
-
     	return bridge.newRV;
     }
 
     template<typename T, typename R, typename F>
     auto operator|(RangeViewBridge<T, R> bridge, Op<F> op) {
-        bridge.newRV.addAction(std::function< std::vector<R>(std::vector<R>&, RangeView<R>&) >(op.getFunc()));
+        bridge.newRV.addAction(std::function< void(std::vector<R>&, RangeView<R>&) >(op.getFunc()));
         return bridge;
     };
 
@@ -250,8 +274,6 @@ namespace view {
                     rv.getResultVec().resize(n);
                 }
             }
-
-			return v;
 		};
 
         return LazyTerminationOp<decltype(take_func)>(take_func);
@@ -260,7 +282,6 @@ namespace view {
 	auto reverse() {
 		auto reverse_func = [](auto &v, auto &rv) {
 			std::reverse(v.begin(), v.end());
-			return v;
 		};
 
 		return Op<decltype(reverse_func)>(reverse_func);
@@ -276,8 +297,6 @@ namespace view {
 					i++;
 				}
 			}
-
-			return v;
 		};
 
 		return Op<decltype(remove_if_func)>(remove_if_func);
